@@ -22,7 +22,7 @@ end
 
 for j =2:L
     % 全局细分映射到局部细分
-    alpha=eval_alpha(s,j,L)
+    alpha=eval_alpha(s,j,L);
     t= alpha;
     
     if(alpha>0)

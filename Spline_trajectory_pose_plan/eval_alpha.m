@@ -7,6 +7,5 @@ if((i>=k)&&(i<k+1))
 else
     alpha=0;
 end
-
 end
 

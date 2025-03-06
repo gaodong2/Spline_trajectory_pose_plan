@@ -12,6 +12,7 @@ else
     qji=quatinv(q(:,j)');
     qiqm1=quatmultiply(qji,q(:,j-1)');
     qiqp1=quatmultiply(qji,q(:,j+1)');
+
     ang_vel =-((quatlog(qiqp1)+quatlog(qiqm1))/4); 
     
     qa = quatmultiply(q(:,j)',quatExp(ang_vel));

@@ -25,14 +25,14 @@ function v = velocity_planning(s_start, s_end, v_max, a_sup, v0, vt)
     v = min(v_forward, v_backward);
 
 %      绘制结果
-%     figure;
-%     plot(s, v_max, 'r--', 'LineWidth', 2); hold on;
-%     plot(s, v_forward, 'g-.', 'LineWidth', 2);
-%     plot(s, v_backward, 'b-.', 'LineWidth', 2);
-%     plot(s, v, 'k', 'LineWidth', 2);
-%     xlabel('位置 s (m)');
-%     ylabel('速度 v (m/s)');
-%     legend('最大速度限制', '前向传播速度', '反向传播速度', '可达速度');
-%     title('速度规划');
-%     grid on;
+    figure;
+    plot(s, v_max, 'r--', 'LineWidth', 2); hold on;
+    plot(s, v_forward, 'g-.', 'LineWidth', 2);
+    plot(s, v_backward, 'b-.', 'LineWidth', 2);
+    plot(s, v, 'k', 'LineWidth', 2);
+    xlabel('位置 s (m)');
+    ylabel('速度 v (m/s)');
+    legend('最大速度限制', '前向传播速度', '反向传播速度', '可达速度');
+    title('速度规划');
+    grid on;
 end
