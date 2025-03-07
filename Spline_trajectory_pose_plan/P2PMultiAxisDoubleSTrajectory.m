@@ -63,7 +63,7 @@ for i = 1:rows
     end
     T(i) = 4 * T1(i) + 2* T2(i) + T4(i);
     N(i) = round(T(i) / sampleTime);
-    X = 0:sampleTime:(N-1)*sampleTime;
+    X = 0:sampleTime:(N)*sampleTime;
     Jp = zeros(1,N(i));
     Ap = zeros(1,N(i));
     Vp = zeros(1,N(i));
@@ -85,7 +85,41 @@ for i = 1:rows
         elseif (j * sampleTime >= T1(i) + T2(i) + T3(i) + T4(i) + T6(i))
             Jp(j) = Dir(i) * Jm(i);
         end
-
+    end
+    pp = 0;
+    pm = 0;
+    pmj = [];
+    mp = 0;
+    mpj = [];
+    mm = 0;
+    mmj = [];
+    for j = 1:N(i)
+        if j < N(i)/2
+            if Jp(j) > 0
+                pp = pp + 1;
+            elseif Jp(j) < 0
+                pm = pm + 1;
+                pmj = [pmj, j];
+            end
+        else
+            if Jp(j) < 0
+                mp = mp + 1;
+                mpj = [mpj, j];
+            elseif Jp(j) > 0
+                mm = mm + 1;
+                mmj = [mmj, j];
+            end   
+        end
+    end
+    
+    if(pp~=pm)
+        Jp(pmj(end)) = 0; 
+    end
+    if(mp~=mm)
+        Jp(mpj(1)) = 0;
+        Jp(mmj(1)) = Jp(mmj(1)-1);
+    end
+    for j = 1: N(i)
         if j == 1
             Ap(j) = Jp(j) * sampleTime;
             Vp(j) = 1 / 2 * Jp(j) * power(sampleTime, 2);
@@ -95,8 +129,12 @@ for i = 1:rows
             Vp(j) = Vp(j - 1) + Ap(j - 1) * sampleTime + 1 / 2 * Jp(j) * power(sampleTime, 2);
             Sp(j) = Sp(j - 1) + Vp(j - 1) * sampleTime + 1 / 2 * Ap(j - 1) * power(sampleTime, 2) + 1 / 6 * Jp(j) * power(sampleTime, 3);
         end
-        
     end
+
+    Jp = [Jp,0];
+    Ap = [Ap,0];
+    Vp = [Vp,0];
+    Sp = [Sp,Sr(i)];
 
     figure
     subplot(2,2,1);

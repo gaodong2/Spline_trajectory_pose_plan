@@ -1,15 +1,18 @@
 clear
 clc
-
+close all;
 List = [0, 0.3, 0.1, 0.1, 0.2];
 
-[Ap, Vp, Sp] = P2PMultiAxisDoubleSTrajectory(0.001, List);
-
+[Jp, Ap, Vp, Sp] = P2PMultiAxisDoubleSTrajectory(0.01, List);
+Jp = Jp';
+Ap = Ap';
+Vp = Vp';
+Sp = Sp';
 %双S型速度曲线规划，支持多轴，暂不支持同步
 %参考资料：A Planning Method for Multi-Axis Point-to-Point Synchronization Based on Time Constraints
 %sampleTime 采样时间或者是通信周期，一般为毫秒级别
 %input 各个轴规划的参数列表，每行代表一个轴，每行从左到右分别为：起点，终点，最大速度，最大加速度，最大加加速度
-function [Ap, Vp, Sp] = P2PMultiAxisDoubleSTrajectory(sampleTime, input)
+function [Jp, Ap, Vp, Sp] = P2PMultiAxisDoubleSTrajectory(sampleTime, input)
 
 [rows, columns] = size(input);  %获取参数表的行数与列数
 if columns ~= 5
@@ -72,7 +75,7 @@ for i = 1:rows
             T4(i) = 0;
         end
     end
-    T(i) = 4 * T1(i) + 2* T2(i) + T4(i);
+    T(i) = 4 * T1(i) + 2* T2(i) + T4(i)
     N(i) = round(T(i) / sampleTime);
     X = 0:sampleTime:(N-1)*sampleTime;
     Jp = zeros(1,N(i));
@@ -81,20 +84,23 @@ for i = 1:rows
     Sp = zeros(1,N(i));
 
     for j = 1: N(i)
-        if (j * sampleTime < T1(i))
+        j * sampleTime
+        if (j * sampleTime <= T1(i))
             Jp(j) = Dir(i) * Jm(i);
-        elseif (j * sampleTime >= T1(i) && j * sampleTime < T1(i) + T2(i))
+        elseif (j * sampleTime > T1(i) && j * sampleTime < T1(i) + T2(i))
             Jp(j) = 0;
         elseif (j * sampleTime >= T1(i) + T2(i) && j * sampleTime < T1(i) + T2(i) + T3(i))
             Jp(j) = -1 * Dir(i) * Jm(i);
         elseif (j * sampleTime >= T1(i) + T2(i) + T3(i) && j * sampleTime < T1(i) + T2(i) + T3(i) + T4(i))
             Jp(j) = 0;
-        elseif (j * sampleTime >= T1(i) + T2(i) + T3(i) + T4(i) && j * sampleTime < T1(i) + T2(i) + T3(i) + T4(i) + T5(i))
+        elseif (j * sampleTime >= T1(i) + T2(i) + T3(i) + T4(i) && j * sampleTime <= T1(i) + T2(i) + T3(i) + T4(i) + T5(i))
             Jp(j) = -1 * Dir(i) * Jm(i);
-        elseif (j * sampleTime >= T1(i) + T2(i) + T3(i) + T4(i) + T5(i) && j * sampleTime < T1(i) + T2(i) + T3(i) + T4(i) + T5(i) + T6(i))
+        elseif (j * sampleTime > T1(i) + T2(i) + T3(i) + T4(i) + T5(i) && j * sampleTime <= T1(i) + T2(i) + T3(i) + T4(i) + T5(i) + T6(i))
             Jp(j) = 0;
-        elseif (j * sampleTime >= T1(i) + T2(i) + T3(i) + T4(i) + T6(i))
+        elseif (j * sampleTime > T1(i) + T2(i) + T3(i) + T4(i) + T5(i) + T6(i)) && (j * sampleTime < T1(i) + T2(i) + T3(i) + T4(i) + T5(i) + T6(i) + T7(i))
             Jp(j) = Dir(i) * Jm(i);
+        elseif(j * sampleTime >= T1(i) + T2(i) + T3(i) + T4(i) + T5(i) + T6(i) + T7(i))
+            Jp(j) = 0;
         end
 
         if j == 1
