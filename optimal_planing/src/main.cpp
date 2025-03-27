@@ -206,8 +206,135 @@ Eigen::Matrix3d QuatToRotm(Eigen::Quaterniond &IMUquat){
     return IMUquat.toRotationMatrix();
 }
 
-bool IsIMUCollision(Eigen::Matrix<double, 1,7> &ref, Eigen::Matrix<double, 1,7> &current, double threshold) {
+Vector3d getPosEulerFromZYX(const Matrix3d &R, double Rref[3]) {
+    // Rz*Ry*Rx out: xyz
+    Vector3d pr;
+    Matrix3d Rt = R.transpose();
+    pr = getPosEulerFromXYZ(Rt, Rref);
+    return -pr;
+}
 
+Vector3d GetLogRotation(Matrix3d &A) {
+    Matrix3d LTp;
+    Vector3d LA;
+    double theta=acos((A(0,0)+A(1,1)+A(2,2)-1)/2);
+    LTp=(A-A.transpose())/(2*sin(theta));   
+    LA={LTp(2,1)*theta, LTp(0,2)*theta, LTp(1,0)*theta};    
+    return LA;
+}
+
+bool AssembleAngleCalibration (vector<Eigen::Vector3d> &IMUquat, vector<Eigen::Vector3d> &Robotpose, Eigen::Vector3d &output) {
+    int IMUlength  = IMUquat.size();
+    int Robotlength = Robotpose.size();
+    double IMUEuler[3], ROBOTEuler[3], Rref[3];
+    if(IMUlength < 4 || Robotlength < 4) {
+        return 0;
+    }
+    Eigen::Matrix<double, 9, 3> IMUrot, Robotrot;
+    Matrix3d NTRot, NRRot, TR, RR, deltaTR, deltaRR, out;
+    Vector3d NTR, NRR;
+
+    //陀螺仪欧拉角转矩阵 
+    Eigen::AngleAxisd Troll(AngleAxisd(IMUquat[0][2],Vector3d::UnitX()));
+    Eigen::AngleAxisd Tpitch(AngleAxisd(IMUquat[0][1],Vector3d::UnitY()));
+    Eigen::AngleAxisd Tyaw(AngleAxisd(IMUquat[0][0],Vector3d::UnitZ()));
+    TR = Tyaw*Tpitch*Troll;
+    Eigen::AngleAxisd Rroll(AngleAxisd(Robotpose[0][2],Vector3d::UnitX()));
+    Eigen::AngleAxisd Rpitch(AngleAxisd(Robotpose[0][1],Vector3d::UnitY()));
+    Eigen::AngleAxisd Ryaw(AngleAxisd(Robotpose[0][0],Vector3d::UnitZ()));
+    RR = Ryaw*Rpitch*Rroll;
+    for (int i=1;i<IMUlength;i++) {
+        Eigen::AngleAxisd NTroll(AngleAxisd(IMUquat[i][2],Vector3d::UnitX()));
+        Eigen::AngleAxisd NTpitch(AngleAxisd(IMUquat[i][1],Vector3d::UnitY()));
+        Eigen::AngleAxisd NTyaw(AngleAxisd(IMUquat[i][0],Vector3d::UnitZ()));
+        NTRot = NTyaw*NTpitch*NTroll;
+        deltaTR = TR.transpose() * NTRot;
+        NTR = GetLogRotation(deltaTR);
+        Eigen::AngleAxisd NRroll(AngleAxisd(Robotpose[i][2],Vector3d::UnitX()));
+        Eigen::AngleAxisd NRpitch(AngleAxisd(Robotpose[i][1],Vector3d::UnitY()));
+        Eigen::AngleAxisd NRyaw(AngleAxisd(Robotpose[i][0],Vector3d::UnitZ()));
+        NRRot = NRyaw*NRpitch*NRroll;        
+        deltaRR = RR.transpose() * NRRot;
+        NRR = GetLogRotation(deltaRR);
+        IMUrot(i-1,0) = NTR[0];
+        IMUrot(i-1,1) = NTR[1];
+        IMUrot(i-1,2) = NTR[2];
+
+        Robotrot(i-1,0) = NRR[0];
+        Robotrot(i-1,1) = NRR[1];
+        Robotrot(i-1,2) = NRR[2];
+    }
+    // Eigen::MatrixXd IMUrot_2 = IMUrot.transpose();
+    // MatrixXd IMUrot_3 = pinv_eigen_based(IMUrot_2);
+    Rref[0] = 0.0;
+    Rref[1] = 0.0;
+    Rref[2] = 0.0;
+    out = (Robotrot.transpose()*Robotrot).inverse() * Robotrot.transpose() * IMUrot;
+    output = getPosEulerFromZYX(out, Rref);
+    // output = Robotrot.transpose() * IMUrot.transpose().completeOrthogonalDecomposition().pseudoInverse();
+    // output = Robotrot.transpose() * IMUrot_3;
+    return 1;
+}
+
+int GetIMUandRobotpose (vector<Eigen::Vector3d> &IMUquat, vector<Eigen::Vector3d> &Robotpose, Eigen::Matrix3d &output, const Vector3d &INitR) {
+    int IMUlength  = IMUquat.size();
+    int Robotlength = Robotpose.size();
+    double IMUEuler[3], ROBOTEuler[3], Rref[3];
+    if(IMUlength < 4 || Robotlength < 4) {
+        return 0;
+    }
+    Rref[0] = 0;
+    Rref[1] = 0;
+    Rref[2] = 0;
+    Eigen::Matrix<double, 9, 3> IMUrot, Robotrot;
+    Matrix3d NTRot, NRRot, TR, RR, deltaTR, deltaRR;
+    Vector3d NTR, NRR;
+    //获取输入参数 
+    Eigen::AngleAxisd Rz(INitR[0], Vector3d::UnitZ()); 
+    Eigen::AngleAxisd Ry(INitR[1], Vector3d::UnitY()); 
+    Eigen::AngleAxisd Rx(INitR[2], Vector3d::UnitX()); 
+    //陀螺仪欧拉角转矩阵 
+    Eigen::AngleAxisd Troll(AngleAxisd(IMUquat[0][2],Vector3d::UnitX()));
+    Eigen::AngleAxisd Tpitch(AngleAxisd(IMUquat[0][1],Vector3d::UnitY()));
+    Eigen::AngleAxisd Tyaw(AngleAxisd(IMUquat[0][0],Vector3d::UnitZ()));
+    TR = Tyaw*Tpitch*Troll * Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix();
+    Eigen::AngleAxisd Rroll(AngleAxisd(Robotpose[0][2],Vector3d::UnitX()));
+    Eigen::AngleAxisd Rpitch(AngleAxisd(Robotpose[0][1],Vector3d::UnitY()));
+    Eigen::AngleAxisd Ryaw(AngleAxisd(Robotpose[0][0],Vector3d::UnitZ()));
+    RR = Ryaw*Rpitch*Rroll;
+    for (int i=1;i<IMUlength;i++) {
+        Eigen::AngleAxisd NTroll(AngleAxisd(IMUquat[i][2],Vector3d::UnitX()));
+        Eigen::AngleAxisd NTpitch(AngleAxisd(IMUquat[i][1],Vector3d::UnitY()));
+        Eigen::AngleAxisd NTyaw(AngleAxisd(IMUquat[i][0],Vector3d::UnitZ()));
+        NTRot = NTyaw*NTpitch*NTroll * Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix();
+        deltaTR = TR.transpose() * NTRot;
+        NTR = getPosEulerFromXYZ(deltaTR, Rref);
+        Eigen::AngleAxisd NRroll(AngleAxisd(Robotpose[i][2],Vector3d::UnitX()));
+        Eigen::AngleAxisd NRpitch(AngleAxisd(Robotpose[i][1],Vector3d::UnitY()));
+        Eigen::AngleAxisd NRyaw(AngleAxisd(Robotpose[i][0],Vector3d::UnitZ()));
+        NRRot = NRyaw*NRpitch*NRroll;        
+        deltaRR = RR.transpose() * NRRot;
+        NRR = getPosEulerFromXYZ(deltaRR, Rref);
+        IMUrot(i-1,0) = NTR[0];
+        IMUrot(i-1,1) = NTR[1];
+        IMUrot(i-1,2) = NTR[2];
+
+        Robotrot(i-1,0) = NRR[0];
+        Robotrot(i-1,1) = NRR[1];
+        Robotrot(i-1,2) = NRR[2];
+    }
+    // Eigen::MatrixXd IMUrot_2 = IMUrot.transpose();
+    // MatrixXd IMUrot_3 = pinv_eigen_based(IMUrot_2);
+    output = Robotrot.transpose() * IMUrot.transpose().completeOrthogonalDecomposition().pseudoInverse();
+    // output = Robotrot.transpose() * IMUrot_3;
+    return 1;
+}
+
+
+
+bool IsIMUCollision(Eigen::Matrix<double, 1,7> &ref, Eigen::Matrix<double, 1,7> &current, double threshold) {
+    //printf("ref: %.5f, %.5f,%.5f,%.5f,%.5f,%.5f,%.5f \n", ref[0], ref[1],ref[2],ref[3],ref[4],ref[5],ref[6]);
+    //printf("current: %.5f, %.5f,%.5f,%.5f,%.5f,%.5f,%.5f \n", current[0], current[1],current[2],current[3],current[4],current[5],current[6]);
         /* Input
         ref (w,x,y,z,RZ,RY,RX) degree
         cur (w,x,y,z,RZ,RY,RX) degree
@@ -220,63 +347,62 @@ bool IsIMUCollision(Eigen::Matrix<double, 1,7> &ref, Eigen::Matrix<double, 1,7> 
         Eigen::Vector3d bNTR, NTR, NRR;
         Eigen::Matrix<double, 3,3> Pin;
         Eigen::Matrix<double, 3,1> CTR;
-        Pin <<    0.985519,   0.120665, -0.0871064,
-                 -0.188759,   0.970245, -0.0603612,
-                  0.153308,  0.0639084,   0.992154;
+        // Pin << algoYisData.Rchg[0], algoYisData.Rchg[1], algoYisData.Rchg[2],
+        //     algoYisData.Rchg[3], algoYisData.Rchg[4], algoYisData.Rchg[5],
+        //     algoYisData.Rchg[6], algoYisData.Rchg[7], algoYisData.Rchg[8];
+//         Pin <<      0.9647,    0.0621,   -0.0084,
+//    -0.2164,    0.9801 ,   0.2601,
+//    -0.0753,   -0.2473 ,   0.9258;
+        // Pin <<    0.985519,   0.120665, -0.0871064,
+        //          -0.188759,   0.970245, -0.0603612,
+        //           0.153308,  0.0639084,   0.992154;
 
+          Pin<<    1.000456,    -0.000050,   0.002540,
+   0.000889,    0.996266,   0.004241,
+    -0.000053,    0.004937,    0.999048;
         // Reference IMU
         double w = ref(0,0);
         double x = ref(0,1);
         double y = ref(0,2);
         double z = ref(0,3);
         Eigen::Quaterniond refIMU(w,x,y,z);
-        Eigen::AngleAxisd Rz(M_PI/2, Eigen::Vector3d::UnitZ()); 
-        Eigen::AngleAxisd Ry(0, Eigen::Vector3d::UnitY()); 
-        Eigen::AngleAxisd Rx(M_PI/2, Eigen::Vector3d::UnitX()); 
+        // Eigen::AngleAxisd Rz(algoYisData.in_rz, Vector3d::UnitZ()); 
+        // Eigen::AngleAxisd Ry(algoYisData.in_ry, Vector3d::UnitY()); 
+        // Eigen::AngleAxisd Rx(algoYisData.in_rx, Vector3d::UnitX()); 
+        // -pi/2-0.1, 0.2, -pi/2+0.45
+        Eigen::AngleAxisd Rz(1.590204, Vector3d::UnitZ()); 
+        Eigen::AngleAxisd Ry(0.033067, Vector3d::UnitY()); 
+        Eigen::AngleAxisd Rx(-1.364081, Vector3d::UnitX()); 
         TR = QuatToRotm(refIMU) * Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix();
-        std::cout << "TR" << std::endl;
-        std::cout << TR << std::endl;
         // Reference Robot
         double rz = ref(0,4) /180 *M_PI;
         double ry = ref(0,5) /180 *M_PI;
         double rx = ref(0,6) /180 *M_PI;
-        Eigen::AngleAxisd roll(Eigen::AngleAxisd(rx,Eigen::Vector3d::UnitX()));
-        Eigen::AngleAxisd pitch(Eigen::AngleAxisd(ry,Eigen::Vector3d::UnitY()));
-        Eigen::AngleAxisd yaw(Eigen::AngleAxisd(rz,Eigen::Vector3d::UnitZ()));
+        Eigen::AngleAxisd roll(Eigen::AngleAxisd(rx,Vector3d::UnitX()));
+        Eigen::AngleAxisd pitch(Eigen::AngleAxisd(ry,Vector3d::UnitY()));
+        Eigen::AngleAxisd yaw(Eigen::AngleAxisd(rz,Vector3d::UnitZ()));
         RR = yaw*pitch*roll;
-        std::cout << "RR" << std::endl;
-        std::cout << RR << std::endl;
-		std::cout << rz << " " << ry << " " << rx << std::endl;
         //Current IMU
         w = current(0,0);
         x = current(0,1);
         y = current(0,2);
         z = current(0,3);
         Eigen::Quaterniond curIMU(w,x,y,z);
-        // NTRom = QuatToRotm(curIMU) *Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix(); 
-        NTRom = QuatToRotm(curIMU);
+        NTRom = QuatToRotm(curIMU) *Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix(); 
         deltaTR = TR.transpose() * NTRom;
-        std::cout << "deltaTR" << std::endl;
-        std::cout << deltaTR << std::endl;
-        std::cout << "NTRom" << std::endl;
-        std::cout << NTRom << std::endl;
         NTR = getPosEulerFromXYZ(deltaTR, Rref);
         CTR << NTR[0], NTR[1], NTR[2];
         bNTR = Pin * CTR;
-        std::cout << NTR[0]/M_PI*180 << " " << NTR[1]/M_PI*180 << " " << NTR[2]/M_PI*180 << std::endl;
         std::cout << bNTR[0]/M_PI*180 << " " << bNTR[1]/M_PI*180 << " " << bNTR[2]/M_PI*180 << std::endl;
         //Current Robot
         rz = current(0,4) /180 *M_PI;
         ry = current(0,5) /180 *M_PI;
         rx = current(0,6) /180 *M_PI;
-        Eigen::AngleAxisd Croll(Eigen::AngleAxisd(rx,Eigen::Vector3d::UnitX()));
-        Eigen::AngleAxisd Cpitch(Eigen::AngleAxisd(ry,Eigen::Vector3d::UnitY()));
-        Eigen::AngleAxisd Cyaw(Eigen::AngleAxisd(rz,Eigen::Vector3d::UnitZ()));
+        Eigen::AngleAxisd Croll(Eigen::AngleAxisd(rx,Vector3d::UnitX()));
+        Eigen::AngleAxisd Cpitch(Eigen::AngleAxisd(ry,Vector3d::UnitY()));
+        Eigen::AngleAxisd Cyaw(Eigen::AngleAxisd(rz,Vector3d::UnitZ()));
         NRRom = Cyaw*Cpitch*Croll;        
         deltaRR = RR.transpose() * NRRom;
-        std::cout << "deltaRR" << std::endl;
-		std::cout << deltaRR << std::endl; 
-
         NRR = getPosEulerFromXYZ(deltaRR, Rref);
         std::cout << NRR[0]/M_PI*180 << " " << NRR[1]/M_PI*180 << " " << NRR[2]/M_PI*180 << std::endl; 
         for(int i=0;i<3;i++) {
@@ -286,6 +412,91 @@ bool IsIMUCollision(Eigen::Matrix<double, 1,7> &ref, Eigen::Matrix<double, 1,7> 
         }
         return false;
 }
+
+
+// bool IsIMUCollision(Eigen::Matrix<double, 1,7> &ref, Eigen::Matrix<double, 1,7> &current, double threshold) {
+
+//         /* Input
+//         ref (w,x,y,z,RZ,RY,RX) degree
+//         cur (w,x,y,z,RZ,RY,RX) degree
+//         threshold degree */
+//         double Rref[3];
+//         Rref[0] = 0;
+//         Rref[1] = 0;
+//         Rref[2] = 0;
+//         Eigen::Matrix3d NTRom, NRRom, TR, RR, deltaTR, deltaRR;
+//         Eigen::Vector3d bNTR, NTR, NRR;
+//         Eigen::Matrix<double, 3,3> Pin;
+//         Eigen::Matrix<double, 3,1> CTR;
+//         Pin <<    0.985519,   0.120665, -0.0871064,
+//                  -0.188759,   0.970245, -0.0603612,
+//                   0.153308,  0.0639084,   0.992154;
+//         //  Pin <<        -0.9647,   -0.0621,   -0.0084,
+//         //             0.2164,   -0.9801 ,   0.2601,
+//         //             0.0753 ,   0.2473 ,   0.9258;
+//         // Reference IMU
+//         double w = ref(0,0);
+//         double x = ref(0,1);
+//         double y = ref(0,2);
+//         double z = ref(0,3);
+//         Eigen::Quaterniond refIMU(w,x,y,z);
+//         Eigen::AngleAxisd Rz(-M_PI/2, Eigen::Vector3d::UnitZ()); 
+//         Eigen::AngleAxisd Ry(0, Eigen::Vector3d::UnitY()); 
+//         Eigen::AngleAxisd Rx(-M_PI/2, Eigen::Vector3d::UnitX()); 
+//         TR = QuatToRotm(refIMU) * Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix();
+//         //TR = QuatToRotm(refIMU);
+//         std::cout << "TR" << std::endl;
+//         std::cout << TR << std::endl;
+//         // Reference Robot
+//         double rz = ref(0,4) /180 *M_PI;
+//         double ry = ref(0,5) /180 *M_PI;
+//         double rx = ref(0,6) /180 *M_PI;
+//         Eigen::AngleAxisd roll(Eigen::AngleAxisd(rx,Eigen::Vector3d::UnitX()));
+//         Eigen::AngleAxisd pitch(Eigen::AngleAxisd(ry,Eigen::Vector3d::UnitY()));
+//         Eigen::AngleAxisd yaw(Eigen::AngleAxisd(rz,Eigen::Vector3d::UnitZ()));
+//         RR = yaw*pitch*roll;
+//         std::cout << "RR" << std::endl;
+//         std::cout << RR << std::endl;
+// 		std::cout << rz << " " << ry << " " << rx << std::endl;
+//         //Current IMU
+//         w = current(0,0);
+//         x = current(0,1);
+//         y = current(0,2);
+//         z = current(0,3);
+//         Eigen::Quaterniond curIMU(w,x,y,z);
+//         NTRom = QuatToRotm(curIMU) *Rz.toRotationMatrix()*Ry.toRotationMatrix()*Rx.toRotationMatrix(); 
+//         //NTRom = QuatToRotm(curIMU);
+//         deltaTR = TR.transpose() * NTRom;
+//         std::cout << "deltaTR" << std::endl;
+//         std::cout << deltaTR << std::endl;
+//         std::cout << "NTRom" << std::endl;
+//         std::cout << NTRom << std::endl;
+//         NTR = getPosEulerFromXYZ(deltaTR, Rref);
+//         CTR << NTR[0], NTR[1], NTR[2];
+//         bNTR = Pin * CTR;
+//         std::cout << NTR[0]/M_PI*180 << " " << NTR[1]/M_PI*180 << " " << NTR[2]/M_PI*180 << std::endl;
+//         std::cout << bNTR[0]/M_PI*180 << " " << bNTR[1]/M_PI*180 << " " << bNTR[2]/M_PI*180 << std::endl;
+//         //Current Robot
+//         rz = current(0,4) /180 *M_PI;
+//         ry = current(0,5) /180 *M_PI;
+//         rx = current(0,6) /180 *M_PI;
+//         Eigen::AngleAxisd Croll(Eigen::AngleAxisd(rx,Eigen::Vector3d::UnitX()));
+//         Eigen::AngleAxisd Cpitch(Eigen::AngleAxisd(ry,Eigen::Vector3d::UnitY()));
+//         Eigen::AngleAxisd Cyaw(Eigen::AngleAxisd(rz,Eigen::Vector3d::UnitZ()));
+//         NRRom = Cyaw*Cpitch*Croll;        
+//         deltaRR = RR.transpose() * NRRom;
+//         std::cout << "deltaRR" << std::endl;
+// 		std::cout << deltaRR << std::endl; 
+
+//         NRR = getPosEulerFromXYZ(deltaRR, Rref);
+//         std::cout << NRR[0]/M_PI*180 << " " << NRR[1]/M_PI*180 << " " << NRR[2]/M_PI*180 << std::endl; 
+//         for(int i=0;i<3;i++) {
+//             if(fabs(bNTR[i] - NRR[i])/M_PI*180 > threshold) {
+//                 return true;
+//             }
+//         }
+//         return false;
+// }
 
 int main() {
     // const int joint_num = 6;
@@ -438,17 +649,36 @@ int main() {
 // Eigen::AngleAxisd yaw(Eigen::AngleAxisd(y, Eigen::Vector3d::UnitZ()));
 // Eigen::Quaterniond q = yaw * pitch * roll;
 
+    // 15.950 1.222 -115.584
+    //  7.138 -13.940  178.619
+
+// AssembleAngleCalibration();
+    // 173.086 166.374  3.023
+    // 146.229 151.093 -60.412
 // 	Eigen::Matrix<double, 1,7> ref;
 //     Eigen::Matrix<double, 1,7> current;
-//     ref << 0.944364, -0.0277765, -0.327615, -0.00856533, 99.46201721134291, -1.136849525403726, 123.87779164364814;
-// current << -0.950235, 0.051612, 0.284702, 0.115473, 112.69802497437217, -1.7031973099832007, 119.00630143602517;
-//    double threshold = 11;
+//     ref << 0.9678936004638672, 0.18497805297374725, -0.16521316766738892, 0.0408618189394474, 79.7381911720226, 16.22285807390552, 80.46691730587456;
+// current <<  0.994408604727052,	0.105580237370314,	0.00206998169408300,	-0.000235578887331333, 87.07772214174726, 8.03269274109411, 101.68995113406866;
+// // ref << 0.8624746203422546, -0.2436242699623108, 0.31074848771095276, 0.31657564640045166, 55.498816882766015, -0.05661974070483776, 62.1696520094409;
+// // // current << 0.9172102212905884, -0.01582392305135727, -0.3825235068798065, 0.11023060977458954, 70.54705187385164, -0.4966336760664663, 150.46307804958124 ;
+// // ref << -0.9858323335647583, 0.12038279324769974, -0.11457423865795135, 0.022701982408761978, 90.01070244289097, 0.20667268892661045, 95.92834281725024;
+// // current << 0.6641859412193298, -0.1714753806591034, -0.01835154928267002, 0.7274038791656494, 171.88082032614915, 179.7933288407704, -84.07165871244675;
+
+// // //                                                                                                 12.73471736907959, -14.3990478515625, 355.74639892578125
+// // //                                                                                                 13.007903099060059, -15.140297889709473, 93.46617889404297
+// // ref << 0.9907142519950867, -0.11084549874067307, 0.07743053138256073, 0.014250551350414753, 77.66741984737963, -0.7890273345208818, 99.42755327148613;
+// // current <<-0.9602293968200684, 0.1755327582359314, 0.20808681845664978, 0.06202946603298187, 83.32840241494782, 3.98089724279636, 134.05139933295138;
+
+//    double threshold = 8;
 //     bool isCol = IsIMUCollision(ref, current, threshold);
 //     std::cout << "isCol" << isCol << std::endl;
+// 117.61158862972742, 4.176246897604839, 136.6272681135567
+// 141.03125344527007, -6.046692259400322, 119.5087348134074
 
-
+// -31.292280197143555, -15.982723236083984, 26.567493438720703;
+// -13.290159225463867, -6.158229827880859, 0.05084500089287758;
 	Eigen::MatrixXd points(6, 6);
-    std::vector<Eigen::Quaterniond> quats;
+//     std::vector<Eigen::Quaterniond> quats;
 	//points << 1, 1, 1, 2, 3, 2, 4, 5, 5, 2, 3, 3, 5, 4, 3, 6, 7, 1, 9, 9, 8, 12, 15, 11;
 // 	points <<1.62338281300000,	0.704965027000000,	-0.0125106200000000,
 // 1.28713110400000,	0.689627258000000,	0.251928284000000,
@@ -475,26 +705,61 @@ int main() {
 // -0.00696710200000000,	0.651501038000000,	0.307992493000000;
 // std::cout << points << std::endl;
 
-    points << -0.004033,0.3055,0.3909, 1.1784,1.5462,-0.83048,
--0.002464,0.30846,0.28987, 1.2859,1.5521,-0.72293,
--0.084906,0.47651,0.29636, 1.2525,1.5337,-0.76819,
--0.020277,0.50181,0.4644, 1.2534,1.5244,-0.76136,
-0.030274,0.39687,0.46005, 1.2622,1.5269,-0.74918,
--0.006156,0.30654,0.59421, 1.2058,1.5164,-0.80915;
+//     points << -0.014033,0.3055,0.3409, 1.1784,1.5462,-0.83048,
+// -0.002464,0.30846,0.28987, 1.2859,1.5521,-0.72293,
+// -0.084906,0.47651,0.29636, 1.2525,1.5337,-0.76819,
+// -0.020277,0.50181,0.4644, 1.2534,1.5244,-0.76136,
+// 0.030274,0.39687,0.46005, 1.2622,1.5269,-0.74918,
+// -0.006156,0.31654,0.55421, 1.2058,1.5164,-0.80915;
 
-	// double period = 0.05; 
-	double Vx = 0.3, allow_omega = 0.2, Ax = 0.05;
-	double threshold = 0.3;
+
+// points << -0.527385,0.011383,0.251305,1.377204,-0.115244,-1.570779,
+//           -0.527449,0.011057,0.222546,1.377204,0.011502,-1.570779,
+//           -0.299238,-0.033424,0.244617,1.377204,0.011502,-1.570779,
+//           -0.241509,-0.012154,0.255021,0.659228,0.011449,-1.570761,
+//           -0.155309,0.185348,0.255020,-0.264400,0.011449,-1.570761,
+//           0.027800,0.240212,0.255020,-1.077060,0.011449,-1.570761,
+//           0.174241,0.171474,0.255020,-1.728182,0.011449,-1.570761,
+//           0.174540,0.173325,0.091196,-1.728182,0.011449,-1.570761,
+//           0.059490,0.191606,0.091192,-1.728182,0.011449,-1.570761;
+points << -0.004033,0.3055,0.3909,1.1784,1.5462,-0.83048,
+ -0.002464,0.30846,0.28987,1.2859,1.5521,-0.72293,
+ -0.084906,0.47651,0.29636,1.2525,1.5337,-0.76819,
+ -0.020277,0.50181,0.4644,1.2534,1.5244,-0.76136,
+ 0.030274,0.39687,0.46005,1.2622,1.5269,-0.74918,
+ -0.006156,0.30654,0.59421,1.2058,1.5164,-0.80915;
+
+	double period = 0.05; 
+	double Vx = 0.1, allow_omega = 0.2, Ax = 0.1;
+	double threshold = 0.5;
     // double scale = 1.0;
     MultiPoints mp;
     std::vector<Eigen::Isometry3d> output;
-    output = mp.GenerateTrajectory(points, Vx, Ax, threshold);
+    std::string type = "S";
+    output = mp.GenerateTrajectory(points, Vx, Ax, threshold, period, type);
     for(int i=0;i<output.size();i++) {
         std::cout << i << ": " << std::endl;
         std::cout << output[i].matrix() << std::endl;
     }
-//  Eigen::Quaterniond R0;
- Squad RI;
+
+ Squad RI;	
+ BSplines curve;
+TrapezoidalVelocity Tvel;    
+ Eigen::Quaterniond R0;
+    // DH_6axis_ur dh;
+    // kinematics_6axis_ur_two aubo_i3 = kinematics_6axis_ur_two(dh);
+    // Eigen::Matrix<double, 1, 6> cur_Q, targetQ;
+    // Eigen::Isometry3d Obj;
+    // cur_Q << 73.249*M_PI/180, 37.648*M_PI/180, 55.438*M_PI/180, -86.913*M_PI/180, -62.157*M_PI/180, -6.604*M_PI/180;
+    // Obj = aubo_i3.baseTend(cur_Q);
+    // double thresholds = 6.28;
+    // for(int i=0;i<output.size();i++) {
+    //    aubo_i3.getQ(output[i], cur_Q, targetQ, thresholds); 
+    //    cur_Q = targetQ;
+    //    std::cout <<  i << ": "<< targetQ(0,0) << " " << targetQ(0,1) << " " << targetQ(0,2) << " " << targetQ(0,3) << " "<< targetQ(0,4) << " " << targetQ(0,5)<< std::endl;
+    // }
+    
+    // std::cout << targetQ.matrix() << std::endl;
 //  for(int i=0;i<6;i++) {
 //     Eigen::AngleAxisd roll(Eigen::AngleAxisd(points(i,5),Eigen::Vector3d::UnitX()));
 //     Eigen::AngleAxisd pitch(Eigen::AngleAxisd(points(i,4),Eigen::Vector3d::UnitY()));
@@ -512,8 +777,7 @@ int main() {
 
 
 // std::cout << points << std::endl;
-	BSplines curve;
-	TrapezoidalVelocity Tvel;
+
 	// // std::cout << points << std::endl;
 	// curve.UniformCubicBSplines(points);
 	// // Eigen::MatrixXd C = curve.GetCurvePos();

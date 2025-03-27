@@ -92,7 +92,7 @@ Eigen::Quaterniond Squad::QuadSquad(std::vector<Eigen::Quaterniond> &q, double t
         // 全局细分映射到局部细分
         double alpha=EvalAlpha(s,j,L);
         double t= alpha;
-        std::cout << "alpha: " << alpha << std::endl;
+        // std::cout << "alpha: " << alpha << std::endl;
         if(alpha>0) {
             double EPS = 1e-9;
 
@@ -179,10 +179,10 @@ double Squad::ComputeAngularVelocityAndAcceleration(std::vector<Eigen::Quaternio
         dq(i, 3) = (q[i+1].z() - q[i-1].z()) / (2 * dt(i-1));     
     }
 
-    dq(N-1, 0) = (q[N-1].w() - q[N-2].w()) / (dt(N-1));
-    dq(N-1, 1) = (q[N-1].x() - q[N-2].x()) / (dt(N-1));
-    dq(N-1, 2) = (q[N-1].y() - q[N-2].y()) / (dt(N-1));
-    dq(N-1, 3) = (q[N-1].z() - q[N-2].z()) / (dt(N-1));
+    dq(N-1, 0) = (q[N-1].w() - q[N-3].w()) / (2 * dt(N-1));
+    dq(N-1, 1) = (q[N-1].x() - q[N-3].x()) / (2 * dt(N-1));
+    dq(N-1, 2) = (q[N-1].y() - q[N-3].y()) / (2 * dt(N-1));
+    dq(N-1, 3) = (q[N-1].z() - q[N-3].z()) / (2 * dt(N-1));
 
     // 计算角速度 omega
     for(int i=0;i<N;i++) {

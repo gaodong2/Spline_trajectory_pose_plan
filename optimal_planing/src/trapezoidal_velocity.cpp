@@ -55,7 +55,7 @@ Eigen::MatrixXd TrapezoidalVelocity::MaxVel(Eigen::MatrixXd &kappa, double thres
     for(int i=0;i<rows;i++) {
         v_max(i,0) = Vs;
         if(kappa(i,0) < threshold)
-            v_max(i,0) = Vs * kappa(i,0) / threshold;
+            v_max(i,0) = Vs * pow((kappa(i,0) / threshold),0.5);
     }
     return v_max;
 }

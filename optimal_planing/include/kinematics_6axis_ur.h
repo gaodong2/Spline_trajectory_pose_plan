@@ -11,12 +11,12 @@ using namespace std;
 //
 typedef struct DH_6axis_ur
 {
-    double d2 = 157;
-    double a3 = 266;
-    double a4 = 256.5;
-    double d5 = 119;
-    double d6 = 102.5;
-    double d7 = 94;
+    double d2 = 0.157;
+    double a3 = 0.266;
+    double a4 = 0.2565;
+    double d5 = 0.119;
+    double d6 = 0.1025;
+    double d7 = 0.094;
 
 } DH_6axis_ur;
 

@@ -8,6 +8,7 @@
 #include "trapezoidal_velocity.h"
 #include "rotational_interpolation.h"
 #include "SphericalQuadraticInterpolation.h"
+#include "S_Type_Velocity.h"
 
 
 class MultiPoints {
@@ -15,7 +16,7 @@ class MultiPoints {
     public:
         MultiPoints();
         ~MultiPoints();
-        std::vector<Eigen::Isometry3d> GenerateTrajectory(Eigen::MatrixXd &points, double VxPrm, double AxPrm, double thresholdPrm, const std::string &velType="T");
+        std::vector<Eigen::Isometry3d> GenerateTrajectory(Eigen::MatrixXd &points, double VxPrm, double AxPrm, double thresholdPrm, double dtPram, const std::string &velType="T");
 
     private:
         std::vector<Eigen::Isometry3d> TTypeVelPlan(Eigen::MatrixXd &points);
@@ -23,6 +24,7 @@ class MultiPoints {
         std::vector<Eigen::Quaterniond> EulerToQuats(Eigen::MatrixXd &points);
         BSplines curve;
         TrapezoidalVelocity Tvel; 
+        S_Type_Velocity Svel;
         Squad RI;  
         int seg;
         double scale;
@@ -30,4 +32,5 @@ class MultiPoints {
         double Vx, Ax;
         double threshold;
         double allow_omega;
+        double j_max = 0.1;
 };

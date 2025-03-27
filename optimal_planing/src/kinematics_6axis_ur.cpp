@@ -348,7 +348,10 @@ int kinematics_6axis_ur_two::solve(const Eigen::Isometry3d& transform3D, std::ve
             !std::isnan(solutions(ii,4)) &&
             !std::isnan(solutions(ii,5)) )
          {
-             joints.push_back(solutions.block(ii,0,1,6));
+            joints.push_back(solutions.block(ii, 0, 1, 6));
+            joints.push_back(solutionsPlus.block(ii, 0, 1, 6));
+            joints.push_back(solutionsMinus.block(ii, 0, 1, 6));
+             //joints.push_back(solutions.block(ii,0,1,6));
 //             joints.push_back(solutionsPlus.block(ii,0,1,6));
 //             joints.push_back(solutionsMinus.block(ii,0,1,6));
 //             auto q = solutions.block(ii,0,1,6);
